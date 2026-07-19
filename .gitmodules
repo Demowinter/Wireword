@@ -1,0 +1,3 @@
+[submodule "libs/byteo"]
+	path = libs/byteo
+	url = https://github.com/Demowinter/byteo
