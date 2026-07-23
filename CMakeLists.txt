@@ -7,7 +7,8 @@ add_executable(wireword
     src/ringbuf.cpp
     src/eventloop.cpp
     src/socket.cpp
-    src/handlereg.cpp)
+    src/handlereg.cpp
+    src/server.cpp)
 
 target_include_directories(wireword PRIVATE "include/")
 target_include_directories(wireword PRIVATE "libs/")
