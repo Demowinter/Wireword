@@ -18,7 +18,11 @@ UHandle HandleRegistry::allocate() {
 
     if (nextHandle < 0) return invalidUHandle;
 
-    return {nextHandle++, fp};
+    Handle handle = nextHandle++;
+
+    usingHandles[handle] = fp;
+
+    return {handle, fp};
 }
 
 void HandleRegistry::free(UHandle handle) {
