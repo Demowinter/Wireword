@@ -22,9 +22,9 @@ void Server::run() {
 }
 
 void Server::stop() {
-    mlogger.log("Server stopped!");
-
     eventloop.stop();
+
+    mlogger.log("Server stopped!");
 }
 
 void Server::interruptHandler(int32_t interrupt) {
