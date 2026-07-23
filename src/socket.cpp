@@ -11,7 +11,7 @@
 #include <eventloop.hpp>
 #include <socket.hpp>
 
-SocketManager::SocketManager(Logger& logger) : mlogger{"SocketManager", logger} {}
+SocketManager::SocketManager(Logger& logger, EventLoop& eventloop, HandleRegistry& hreg) : mlogger{"SocketManager", logger}, eventloop{eventloop}, hreg{hreg} {}
 
 SocketManager::~SocketManager() {
     for (auto [handle, ctx] : sockets) {
@@ -21,7 +21,13 @@ SocketManager::~SocketManager() {
     }
 }
 
-UHandle SocketManager::bind(const std::string& addr, uint16_t port) {
+void SocketManager::open(const std::string& addr, uint16_t port) {
+    if (listener != invalidUHandle) {
+        mlogger.error("Socket open error: listener is already open");
+
+        std::exit(-1);
+    }
+
     mlogger.log("Binding socket...");
 
     byteo::descriptor desc;
@@ -43,51 +49,15 @@ UHandle SocketManager::bind(const std::string& addr, uint16_t port) {
     }
 
     FileDescriptor fd = byteo::utils::realfd(desc);
-    UHandle handle = hreg.allocate();
+    listener = hreg.allocate();
 
     EventCallbacks cbs;
     cbs.input = [this](FileDescriptor fd) { inputHelper(fdmap.at(fd)); };
 
-    sockets[handle.handle] = {desc};
-    fdmap[fd] = handle;
+    sockets[listener.handle] = {desc};
+    fdmap[fd] = listener;
 
     eventloop.addDescriptor(fd, EventType::INPUT, cbs);
-
-    return handle;
-}
-
-std::vector<UHandle> SocketManager::accept(UHandle handle) {
-    if (!hreg.check(handle)) return {};
-
-    SocketContext& ctx = sockets.at(handle.handle);
-
-    EventCallbacks cbs;
-    cbs.input = [this](FileDescriptor fd) { inputHelper(fdmap.at(fd)); };
-    cbs.output = [this](FileDescriptor fd) { outputHelper(fdmap.at(fd)); };
-    cbs.error = [this](FileDescriptor fd) { errorHelper(fdmap.at(fd)); };
-
-    std::vector<UHandle> accepted;
-
-    while (true) {
-        auto result = byteo::accept(ctx.desc);
-
-        if (!result.ok()) break;
-
-        byteo::descriptor newdesc = result.value();
-        byteo::utils::setblocking(newdesc, false);
-
-        FileDescriptor fd = byteo::utils::realfd(newdesc);
-        UHandle newhandle = hreg.allocate();
-
-        sockets[newhandle.handle] = {newdesc};
-        fdmap[fd] = newhandle;
-
-        eventloop.addDescriptor(fd, EventType::INPUT | EventType::OUTPUT, cbs);
-
-        accepted.push_back(newhandle);
-    }
-
-    return accepted;
 }
     
 std::vector<std::byte> SocketManager::read(UHandle handle, int64_t size) {
@@ -125,12 +95,76 @@ void SocketManager::close(UHandle handle) {
     hreg.free(handle);
 }
 
-void SocketManager::inputHelper(UHandle handle) {
+void SocketManager::acceptHelper(UHandle handle) {
+    if (!hreg.check(handle)) return;
 
+    SocketContext& ctx = sockets.at(handle.handle);
+
+    EventCallbacks cbs;
+    cbs.input = [this](FileDescriptor fd) { inputHelper(fdmap.at(fd)); };
+    cbs.output = [this](FileDescriptor fd) { outputHelper(fdmap.at(fd)); };
+    cbs.error = [this](FileDescriptor fd) { errorHelper(fdmap.at(fd)); };
+
+    while (true) {
+        auto result = byteo::accept(ctx.desc);
+
+        if (!result.ok()) break;
+
+        byteo::descriptor newdesc = result.value();
+        byteo::utils::setblocking(newdesc, false);
+
+        FileDescriptor fd = byteo::utils::realfd(newdesc);
+        UHandle newhandle = hreg.allocate();
+
+        sockets[newhandle.handle] = {newdesc};
+        fdmap[fd] = newhandle;
+
+        eventloop.addDescriptor(fd, EventType::INPUT | EventType::OUTPUT, cbs);
+
+        deferredAcceptions.push_back(newhandle);
+    }
+}
+
+void SocketManager::inputHelper(UHandle handle) {
+    if (handle == listener) {
+        acceptHelper(handle);
+
+        return;
+    }
+
+    if (!hreg.check(handle)) return;
+
+    SocketContext& ctx = sockets.at(handle.handle);
+
+    while (!ctx.rbuffer.full()) {
+        auto result = byteo::read(ctx.desc, ctx.rbuffer.available());
+
+        if (!result.ok()) break;
+
+        ctx.rbuffer.write(result);
+    }
 }
 
 void SocketManager::outputHelper(UHandle handle) {
+    if (!hreg.check(handle)) return;
 
+    SocketContext& ctx = sockets.at(handle.handle);
+
+    std::vector<std::byte> buffer;
+
+    while (!ctx.wbuffer.empty() || !ctx.overflowBuffer.empty()) {
+        if (ctx.overflowBuffer.size()) buffer.swap(ctx.overflowBuffer);
+        else buffer = ctx.wbuffer.read(1024);
+        
+        auto result = byteo::write(ctx.desc, buffer);
+
+        if (!result.ok()) break;
+        if (result.value() < buffer.size()) {
+            ctx.overflowBuffer.insert(ctx.overflowBuffer.end(), buffer.begin() + result.value(), buffer.end());
+
+            return;
+        }
+    }
 }
 
 void SocketManager::errorHelper(UHandle handle) {
