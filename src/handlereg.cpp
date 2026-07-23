@@ -45,7 +45,7 @@ Fingerprint HandleRegistry::generateFingerprint() {
 
     Fingerprint fp;
 
-    do { fp = fpgen(mt); } while (usingFingerprints.find(fp) == usingFingerprints.end());
+    do { fp = fpgen(mt); } while (usingFingerprints.find(fp) != usingFingerprints.end());
 
     usingFingerprints.insert(fp);
 
