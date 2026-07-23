@@ -15,6 +15,10 @@ inline bool operator==(UHandle obj1, UHandle obj2) {
     return obj1.handle == obj2.handle && obj1.fp == obj2.fp;
 }
 
+inline bool operator!=(UHandle obj1, UHandle obj2) {
+    return !(obj1 == obj2);
+}
+
 constexpr FileDescriptor invalidDesc = -1;
 constexpr Handle invalidHandle = -1;
 constexpr UHandle invalidUHandle = {-1, 0};
