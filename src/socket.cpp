@@ -11,7 +11,9 @@
 #include <eventloop.hpp>
 #include <socket.hpp>
 
-SocketManager::SocketManager(Logger& logger, EventLoop& eventloop, HandleRegistry& hreg) : mlogger{"SocketManager", logger}, eventloop{eventloop}, hreg{hreg} {}
+SocketManager::SocketManager(Logger& logger, EventLoop& eventloop, HandleRegistry& hreg) : mlogger{"SocketManager", logger}, eventloop{eventloop}, hreg{hreg} {
+    eventloop.addDeferredCallbacks([this](){ deferredTaskHandler(); });
+}
 
 SocketManager::~SocketManager() {
     for (auto [handle, ctx] : sockets) {
@@ -95,6 +97,18 @@ void SocketManager::close(UHandle handle) {
     hreg.free(handle);
 }
 
+void SocketManager::setOnConnect(SocketCallback cb) {
+    onConnect = cb;
+}
+
+void SocketManager::setOnDisconnect(SocketCallback cb) {
+    onDisconnect = cb;
+}
+
+void SocketManager::setOnData(SocketDataCallback cb) {
+    onData = cb;
+}
+
 void SocketManager::acceptHelper(UHandle handle) {
     if (!hreg.check(handle)) return;
 
@@ -121,7 +135,7 @@ void SocketManager::acceptHelper(UHandle handle) {
 
         eventloop.addDescriptor(fd, EventType::INPUT | EventType::OUTPUT, cbs);
 
-        deferredAcceptions.push_back(newhandle);
+        deferredConnections.push_back(newhandle);
     }
 }
 
@@ -168,5 +182,22 @@ void SocketManager::outputHelper(UHandle handle) {
 }
 
 void SocketManager::errorHelper(UHandle handle) {
+    deferredDisconnections.push_back(handle);
+}
 
+void SocketManager::deferredTaskHandler() {
+    for (UHandle handle : deferredConnections) if (onConnect) onConnect(handle);
+
+    std::vector<UHandle> haveData;
+    bool dontWait = false;
+
+    for (auto& [handle, ctx] : sockets) if (!ctx.rbuffer.empty() && onData) haveData.push_back(hreg.getUnique(handle));
+    for (UHandle handle : haveData) dontWait |= onData(handle);
+
+    for (UHandle handle : deferredDisconnections) if (onDisconnect) onDisconnect(handle);
+
+    deferredConnections.clear();
+    deferredDisconnections.clear();
+
+    eventloop.setWaitTimeout(!dontWait);
 }

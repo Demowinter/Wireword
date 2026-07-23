@@ -13,6 +13,7 @@
 #include <eventloop.hpp>
 
 using SocketCallback = std::function<void(UHandle)>;
+using SocketDataCallback = std::function<bool(UHandle)>;
 
 struct SocketContext {
     byteo::descriptor desc;
@@ -40,11 +41,17 @@ public:
 
     void close(UHandle handle);
 
+    void setOnConnect(SocketCallback cb);
+    void setOnDisconnect(SocketCallback cb);
+    void setOnData(SocketDataCallback cb);
+
 private:
     void acceptHelper(UHandle handle);
     void inputHelper(UHandle handle);
     void outputHelper(UHandle handle);
     void errorHelper(UHandle handle);
+
+    void deferredTaskHandler();
 
     ModuleLogger mlogger;
 
@@ -56,5 +63,10 @@ private:
     std::map<Handle, SocketContext> sockets;
     std::map<FileDescriptor, UHandle> fdmap;
 
-    std::vector<UHandle> deferredAcceptions;
+    std::vector<UHandle> deferredConnections;
+    std::vector<UHandle> deferredDisconnections;
+
+    SocketCallback onConnect = nullptr;
+    SocketCallback onDisconnect = nullptr;
+    SocketDataCallback onData = nullptr;
 };
