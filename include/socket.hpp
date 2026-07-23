@@ -23,28 +23,38 @@ struct SocketContext {
     std::vector<std::byte> overflowBuffer;
 };
 
+// struct SocketAcception {
+//     UHandle client;
+//     UHandle listener;
+// };
+
 class SocketManager {
 public:
-    SocketManager(Logger& logger);
+    SocketManager(Logger& logger, EventLoop& eventloop, HandleRegistry& hreg);
     ~SocketManager();
 
-    UHandle bind(const std::string& addr, uint16_t port);
-    std::vector<UHandle> accept(UHandle handle);
-    
+    void open(const std::string& addr, uint16_t port);
+
     std::vector<std::byte> read(UHandle handle, int64_t size);
     int64_t write(UHandle handle, const std::vector<std::byte>& buf);
 
     void close(UHandle handle);
 
 private:
+    void acceptHelper(UHandle handle);
     void inputHelper(UHandle handle);
     void outputHelper(UHandle handle);
     void errorHelper(UHandle handle);
 
     ModuleLogger mlogger;
-    EventLoop eventloop;
-    HandleRegistry hreg;
+
+    EventLoop& eventloop;
+    HandleRegistry& hreg;
+
+    UHandle listener = invalidUHandle;
 
     std::map<Handle, SocketContext> sockets;
     std::map<FileDescriptor, UHandle> fdmap;
+
+    std::vector<UHandle> deferredAcceptions;
 };
