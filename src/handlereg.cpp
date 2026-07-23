@@ -42,6 +42,10 @@ bool HandleRegistry::check(UHandle handle) {
     return it != usingHandles.end() && it->second == handle.fp;
 }
 
+UHandle HandleRegistry::getUnique(Handle handle) {
+    return {handle, usingHandles.at(handle)};
+}
+
 Fingerprint HandleRegistry::generateFingerprint() {
     static std::random_device rd;
     static std::mt19937_64 mt(rd());

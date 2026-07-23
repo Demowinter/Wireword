@@ -10,6 +10,8 @@ public:
 
     bool check(UHandle handle);
 
+    UHandle getUnique(Handle handle);
+
 private:
     Fingerprint generateFingerprint();
     void removeFingerprint(Fingerprint fp);
