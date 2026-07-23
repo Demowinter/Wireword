@@ -1,12 +1,12 @@
-#include <logger.hpp>
-#include <eventloop.hpp>
-#include <socket.hpp>
+#include <csignal>
+#include <server.hpp>
 
 int main() {
     ConsoleLogger cl;
-    ModuleLogger ml{"Main", cl};
+    Server server{cl};
 
-    // SocketManagers
+    ::signal(SIGINT, Server::interruptHandler);
 
-    ml.log("Hello, World!");
+    server.openClientListener("localhost", 8080);
+    server.run();
 }
